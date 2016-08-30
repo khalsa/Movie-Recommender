@@ -18,7 +18,7 @@ import scala.Tuple6;
 import scala.Tuple7;
 import scala.Tuple8;
 
-public class MovieAlgoCosine {
+public class RecommenderAlgo {
 public static void main(String args[]){
 		
 		
