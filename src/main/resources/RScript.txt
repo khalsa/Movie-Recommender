@@ -1,0 +1,30 @@
+setwd("C:/Saurabh/SparkTest/ml-1m/")
+
+lines <- readLines("movies.dat")
+
+lines <- gsub("::", "%", lines)
+
+data <- read.delim(text=lines, sep="%", header = FALSE)
+
+movieCat <- as.list(unlist(strsplit(as.character(data$V3), split="\\|")))
+
+uniqueMovieCat <- unique(movieCat)
+
+for(i in uniqueMovieCat){
+  data[,i] <- 0
+}
+
+
+for(i in colnames(data[,4:ncol(data)])){
+  for(j in 1:nrow(data)){
+    tmp1 = as.list(unlist(strsplit(as.character(data[j,3]), split="\\|")))
+    #ifelse(i %in% tmp1, data1[j,i][1], data1[j,i][0])
+    data[j,i] =replace(data[j,i], i %in% tmp1, 1)
+    #data1[j,i]
+  }
+}
+
+data$V3 = NULL
+
+write.table(data,"movieFormatted.txt",sep="::",row.names=FALSE, col.names=FALSE)
+
