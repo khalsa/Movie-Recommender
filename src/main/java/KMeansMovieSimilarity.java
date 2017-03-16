@@ -17,124 +17,94 @@ import org.apache.spark.mllib.recommendation.Rating;
 import scala.Tuple2;
 
 public class KMeansMovieSimilarity {
+	private static final String INPUT_RATING_PATH = "file:///C:/Saurabh/Spark/ml-1m/ratings.dat";
+	private static final String INPUT_MOVIE_PATH = "file:///C:/Saurabh/Spark/ml-1m/movies.dat";
+	private static final int TEST_MOVIE_ID = 2;
+	private static final String FORMATTED_MOVIE_GENRE = "file:///C:/Saurabh/Spark/ml-1m/movieFormatted.txt";
+	
 	public static void main(String args[]){
-		System.out.println("sdfsfdsfd");
-		
-		String inputPath = "file:///C:/Saurabh/SparkTest/ml-1m/ratings.dat";
-		String movieInput = "file:///C:/Saurabh/SparkTest/ml-1m/movies.dat";
-		
-		String kMeansFormattedMovieInput = "file:///C:/Saurabh/SparkTest/ml-1m/movieFormatted.txt";
-
-		
-		SparkConf conf = new SparkConf().setAppName("MovieRecommendation").setMaster("local");
-        JavaSparkContext sc = new JavaSparkContext(conf);
-		
-		JavaRDD<String> data = sc.textFile(inputPath);
-		JavaRDD<String> movieData = sc.textFile(movieInput);
-		
-		    
-	    JavaRDD<String> kMeansData = sc.textFile(kMeansFormattedMovieInput);
+	    int numClusters = 4;
+	    int numIterationsKMeans = 50;
+	    int rank = 20;
+	    int numIterations = 20;
 	    
-	    JavaPairRDD<String, Vector> kMeansParsedData = kMeansData.mapToPair(s -> {
+	    SparkConf conf = new SparkConf().setAppName("MovieRecommendation").setMaster("local");
+            JavaSparkContext sc = new JavaSparkContext(conf);
+		
+	    JavaRDD<String> userRatingData = sc.textFile(INPUT_RATING_PATH);
+	    JavaRDD<String> movieData = sc.textFile(INPUT_MOVIE_PATH);
+	    JavaRDD<String> kMeansInputData = sc.textFile(FORMATTED_MOVIE_GENRE);
+	    
+	    JavaPairRDD<Integer, String> movies = movieData.mapToPair(s -> {
+		String[] sarray = s.split("::");
+		return new Tuple2<Integer, String>(Integer.parseInt(sarray[0]), sarray[1]);
+	    });
+	    Map<Integer, String> movieMap = movies.collectAsMap();
+
+	    JavaRDD<Rating> ratingsRDD = userRatingData.map(s -> {
+		String[] sarray = s.split("::");
+	  	return new Rating(Integer.parseInt(sarray[0]), Integer.parseInt(sarray[1]), 
+		Double.parseDouble(sarray[2]));
+	    });
+	    
+	    JavaPairRDD<String, Vector> kMeansParsedData = kMeansInputData.mapToPair(s -> {
 	    	String[] sarray = s.split("::");
-	    	//System.out.println("dssadsasad ----------> " + sarray.length);
-	    	
 	    	double[] values = new double[18];
 	     	int j = 0;
 	    	 for (int i = 2; i < sarray.length; i++){
-	        	  //System.out.println(" aaa " + sarray[i]);
-		            values[j] = Double.parseDouble(sarray[i]);
-		            j++;
+		      values[j] = Double.parseDouble(sarray[i]);
+		      j++;
 	          }
 	          return new Tuple2(sarray[0], Vectors.dense(values));
 	    });
 	    
-	    Integer movieId = 296;
-	    
-	    int numClusters = 4;
-	    int numIterationsKMeans = 50;
 	    KMeansModel clusters = KMeans.train(kMeansParsedData.values().rdd(), numClusters, numIterationsKMeans);
+	    
 	    
 	    double WSSSE = clusters.computeCost(kMeansParsedData.values().rdd());
 	    System.out.println("Within Set Sum of Squared Errors = " + WSSSE);
 	    
-	    JavaPairRDD<String, Integer> movieClusteredData =  kMeansParsedData.mapToPair(f->{
+	    JavaPairRDD<String, Integer> clusteredMovieData =  kMeansParsedData.mapToPair(f->{
 	    	Integer b = clusters.predict(f._2());
-	    		return new Tuple2(f._1(), b);
-		    });
-	    
-	    Map<String, Integer> movieClusteredDataMap = movieClusteredData.collectAsMap();
-		
-		JavaPairRDD<Integer, String> movies = movieData.mapToPair(s -> {
-			 String[] sarray = s.split("::");
-			 return new Tuple2<Integer, String>(Integer.parseInt(sarray[0]), sarray[1]);
-		});
-		
-		Map<Integer, String> movieMap = movies.collectAsMap();
-		
-		Integer clusterId = movieClusteredDataMap.get(String.valueOf(movieId));
-		
-		JavaRDD<Rating> ratings = data.map(s -> {
-			  String[] sarray = s.split("::");
-	          return new Rating(Integer.parseInt(sarray[0]), Integer.parseInt(sarray[1]), 
-	                            Double.parseDouble(sarray[2]));
-		});
-		
-		JavaRDD<Rating> filteredRatings = ratings.filter(s -> {
-			  if(movieClusteredDataMap.get(String.valueOf(s.product())).equals(clusterId)){
-				  return true;
-			  }else{
-				  return false;
-			  }
-		});
-		
-		int rank = 20;
-	    int numIterations = 60;
-	    MatrixFactorizationModel model = ALS.train(JavaRDD.toRDD(filteredRatings), rank, numIterations, 0.01);
-	    
-	  /*  List<Rating> ratedUser =  ratings.keyBy(f -> f.user()).lookup(269);
-	    
-	    ratedUser.stream().sorted(Comparator.comparingDouble(Rating::rating).reversed()).limit(10).forEach(f->{
-	    	System.out.println("Movie Name :: " + movieMap.get(f.product()) +" Rating :: " + f.rating());
+    		return new Tuple2(f._1(), b);
 	    });
 	    
-	    Rating[] recMovie = model.recommendProducts(269, 30);
+	    Map<String, Integer> clusteredMovieDataMap = clusteredMovieData.collectAsMap();
+		Integer clusterId = clusteredMovieDataMap.get(String.valueOf(TEST_MOVIE_ID));
 	    
-	    	    
-	    Set<Integer> acceptableNames = ratedUser.stream().map(Rating::product).collect(Collectors.toSet());
 	    
-	    Arrays.stream(recMovie).filter(e-> !acceptableNames.contains(e.product())).forEach(a->{
-	    	System.out.println("RecommendedMovie Name :: " + movieMap.get(a.product()) +" Rating :: " + a.rating());
+	    JavaRDD<Rating> filteredRatings = ratingsRDD.filter(s -> {
+		if(clusteredMovieDataMap.get(String.valueOf(s.product())).equals(clusterId)){
+		  return true;
+	  	}else{
+	  	   return false;
+	  	}
 	    });
-	  */  
-	    //model.recommendProducts(userId, K)
-
 	    
-
-	    JavaPairRDD<Object, double[]> temp =  model.productFeatures().toJavaRDD().mapToPair(f->{
+	    MatrixFactorizationModel model = ALS.train(JavaRDD.toRDD(ratingsRDD), rank, numIterations, 0.01);
+	    
+	    JavaPairRDD<Object, double[]> movieFeaturesRDDMap =  model.productFeatures().toJavaRDD().mapToPair(f->{
 	    	return new Tuple2<Object, double[]>(f._1, f._2);
 	    });
 	    
-	    Map<Object, double[]> tempMap = temp.collectAsMap();
+	    Map<Object, double[]> movieFeaturesMap = movieFeaturesRDDMap.collectAsMap();
 	    
-	    JavaPairRDD<Object, Double> cosSim =  model.productFeatures().toJavaRDD().mapToPair(f->{
-	    	return new Tuple2<Object, Double>(f._1, cosineSimilarity(tempMap.get(movieId), tempMap.get(f._1)));
+	    JavaPairRDD<Object, Double> cosineSimilarity =  model.productFeatures().toJavaRDD().mapToPair(f->{
+	    	return new Tuple2<Object, Double>(f._1, cosineSimilarity(movieFeaturesMap.get(TEST_MOVIE_ID), movieFeaturesMap.get(f._1)));
 	    });
 	    
-	    //JavaPairRDD<Object, Double> cosSimSorted = (JavaPairRDD<Object, Double>) cosSim.mapToPair(x -> x.swap()).sortByKey(false).mapToPair(x -> x.swap()).take(10);
 
-	    Map<Object, Double> cosineMap = cosSim.collectAsMap();
+	    Map<Object, Double> cosineMap = cosineSimilarity.collectAsMap();
 		
-	    cosineMap.entrySet().stream()
-        .sorted(Map.Entry.<Object, Double>comparingByValue().reversed()) 
-        .limit(10) 
-        .forEach(f->{
-        	System.out.println("Movie Name :: " + movieMap.get(f.getKey()) + " value " + f.getValue());
-        });
+	    //Sorting and showing top 10 match.
+	   cosineMap.entrySet().stream()
+	   .sorted(Map.Entry.<Object, Double>comparingByValue().reversed()) 
+           .limit(10) 
+           .forEach(f->{
+        	System.out.println("Movie Name :: " + movieMap.get(f.getKey()) + " similarity value :: " + f.getValue());
+	    });
 	    
-	   
-	    
-	   //System.out.println(cosineSimilarity(tempMap.get(96),tempMap.get(96)));
+	    sc.stop();
 	   
 	   
 	}
