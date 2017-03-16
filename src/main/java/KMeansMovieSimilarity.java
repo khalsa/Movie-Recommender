@@ -1,4 +1,3 @@
-package com.mr.test;
 
 import java.util.Map;
 
